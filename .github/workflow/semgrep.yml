@@ -1,0 +1,64 @@
+name: Semgrep
+
+on:
+  workflow_call:
+
+jobs:
+  semgrep:
+    # User definable name of this GitHub Actions job.
+    name: semgrep/ci 
+    # If you are self-hosting, change the following `runs-on` value: 
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    
+    container:
+      # A Docker image with Semgrep installed. Do not change this.
+      image: returntocorp/semgrep:1.16.0
+
+    steps:
+      # Fetch project source with GitHub Actions Checkout.
+      - uses: actions/checkout@v3
+
+      # Checkout custom rules from semgrep-rules repository.
+      - name: Checkout Semgrep Rules
+        uses: actions/checkout@v3
+        with:
+          repository: semgrep/semgrep-rules
+          path: semgrep-rules
+          ref: develop  # Specify the branch or tag you want to use
+
+      # Checkout script repository.
+      - name: Checkout Script Repository
+        uses: actions/checkout@v3
+        with:
+          repository: xstog625/script
+          path: script
+          ref: main  # Specify the branch or tag you want to use
+
+      # Run the script.sh from the script repository.
+      - name: Run Script
+        id: semgrep
+        run: bash script/script.sh
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results.sarif
+          path: results.sarif
+
+      - name: Save Semgrep output
+        id: semgrep-output
+        run: echo "${{ steps.semgrep.outputs.stdout }}" >> semgrep-output.txt
+        
+      - name: comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const semgrepOutput = fs.readFileSync('semgrep-output.txt', 'utf-8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `👋 Thanks for reporting!\n\nSemgrep output:\n\`\`\`\n${semgrepOutput}\n\`\`\``
+            })
